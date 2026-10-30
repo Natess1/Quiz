@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.Context
 import android.content.SharedPreferences
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -16,11 +17,13 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
@@ -30,7 +33,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.delay
 
 object QuizStats {
     private const val PREFS_NAME = "quiz_stats"
@@ -175,7 +180,17 @@ fun GameScreen(onBack: () -> Unit) {
     var selectedMulti by remember { mutableStateOf(setOf<Int>()) }
     var finished by remember { mutableStateOf(false) }
     var startTime by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    var nowMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
     var gameTimeMillis by remember { mutableLongStateOf(0L) }
+
+    LaunchedEffect(startTime, finished) {
+        if (!finished) {
+            while (true) {
+                nowMillis = System.currentTimeMillis()
+                delay(500)
+            }
+        }
+    }
 
     if (finished) {
         val total = questions.size
@@ -206,6 +221,7 @@ fun GameScreen(onBack: () -> Unit) {
                     selectedMulti = emptySet()
                     gameTimeMillis = 0L
                     startTime = System.currentTimeMillis()
+                    nowMillis = startTime
                     finished = false
                 }
             ) {
@@ -230,104 +246,132 @@ fun GameScreen(onBack: () -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(16.dp)
-            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 16.dp)
     ) {
+        Text(
+            text = formatTime(nowMillis - startTime),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 24.dp),
+            textAlign = TextAlign.Center,
+            style = MaterialTheme.typography.headlineMedium
+        )
+        Spacer(modifier = Modifier.height(24.dp))
         Text("Вопрос ${index + 1} из ${questions.size}")
-        Spacer(modifier = Modifier.height(16.dp))
-        Text(question.text)
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            text = question.text,
+            style = MaterialTheme.typography.titleMedium
+        )
 
-        when (question) {
-            is TextQuestion -> {
-                OutlinedTextField(
-                    value = textInput,
-                    onValueChange = { textInput = it },
-                    enabled = !answered,
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
-
-            is SingleChoiceQuestion -> {
-                question.options.forEachIndexed { optionIndex, option ->
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        RadioButton(
-                            selected = selectedSingle == optionIndex,
-                            onClick = { selectedSingle = optionIndex },
-                            enabled = !answered
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth(),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+            ) {
+                when (question) {
+                    is TextQuestion -> {
+                        OutlinedTextField(
+                            value = textInput,
+                            onValueChange = { textInput = it },
+                            enabled = !answered,
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
                         )
-                        Text(option)
                     }
-                }
-            }
 
-            is MultiChoiceQuestion -> {
-                question.options.forEachIndexed { optionIndex, option ->
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Checkbox(
-                            checked = optionIndex in selectedMulti,
-                            onCheckedChange = { checked ->
-                                selectedMulti = if (checked) {
-                                    selectedMulti + optionIndex
-                                } else {
-                                    selectedMulti - optionIndex
-                                }
-                            },
-                            enabled = !answered
-                        )
-                        Text(option)
+                    is SingleChoiceQuestion -> {
+                        question.options.forEachIndexed { optionIndex, option ->
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                RadioButton(
+                                    selected = selectedSingle == optionIndex,
+                                    onClick = { selectedSingle = optionIndex },
+                                    enabled = !answered
+                                )
+                                Text(option)
+                            }
+                        }
+                    }
+
+                    is MultiChoiceQuestion -> {
+                        question.options.forEachIndexed { optionIndex, option ->
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Checkbox(
+                                    checked = optionIndex in selectedMulti,
+                                    onCheckedChange = { checked ->
+                                        selectedMulti = if (checked) {
+                                            selectedMulti + optionIndex
+                                        } else {
+                                            selectedMulti - optionIndex
+                                        }
+                                    },
+                                    enabled = !answered
+                                )
+                                Text(option)
+                            }
+                        }
                     }
                 }
             }
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
-
-        if (!answered) {
-            Button(
-                onClick = {
-                    val result = when (question) {
-                        is TextQuestion -> question.isCorrect(textInput)
-                        is SingleChoiceQuestion -> question.isCorrect(selectedSingle)
-                        is MultiChoiceQuestion -> question.isCorrect(selectedMulti)
-                    }
-                    wasCorrect = result
-                    if (result) correctCount++
-                    answered = true
-                },
-                enabled = canAnswer
-            ) {
-                Text("Ответить")
-            }
-        } else {
-            Text(if (wasCorrect) "Правильно!" else "Неправильно")
-            if (!wasCorrect) {
-                Text("Правильный ответ: ${correctAnswerText(question)}")
-            }
-            Spacer(modifier = Modifier.height(16.dp))
-            Button(
-                onClick = {
-                    if (isLast) {
-                        val elapsed = System.currentTimeMillis() - startTime
-                        gameTimeMillis = elapsed
-                        QuizStats.recordGame(
-                            correct = correctCount,
-                            wrong = questions.size - correctCount,
-                            timeMillis = elapsed
-                        )
-                        finished = true
-                    } else {
-                        index++
-                        answered = false
-                        wasCorrect = false
-                        textInput = ""
-                        selectedSingle = -1
-                        selectedMulti = emptySet()
-                    }
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(160.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            if (!answered) {
+                Button(
+                    onClick = {
+                        val result = when (question) {
+                            is TextQuestion -> question.isCorrect(textInput)
+                            is SingleChoiceQuestion -> question.isCorrect(selectedSingle)
+                            is MultiChoiceQuestion -> question.isCorrect(selectedMulti)
+                        }
+                        wasCorrect = result
+                        if (result) correctCount++
+                        answered = true
+                    },
+                    enabled = canAnswer
+                ) {
+                    Text("Ответить")
                 }
-            ) {
-                Text(if (isLast) "Завершить" else "Дальше")
+            } else {
+                Text(if (wasCorrect) "Правильно!" else "Неправильно")
+                if (!wasCorrect) {
+                    Text("Правильный ответ: ${correctAnswerText(question)}")
+                }
+                Spacer(modifier = Modifier.height(12.dp))
+                Button(
+                    onClick = {
+                        if (isLast) {
+                            val elapsed = System.currentTimeMillis() - startTime
+                            gameTimeMillis = elapsed
+                            QuizStats.recordGame(
+                                correct = correctCount,
+                                wrong = questions.size - correctCount,
+                                timeMillis = elapsed
+                            )
+                            finished = true
+                        } else {
+                            index++
+                            answered = false
+                            wasCorrect = false
+                            textInput = ""
+                            selectedSingle = -1
+                            selectedMulti = emptySet()
+                        }
+                    }
+                ) {
+                    Text(if (isLast) "Завершить" else "Дальше")
+                }
             }
         }
     }
